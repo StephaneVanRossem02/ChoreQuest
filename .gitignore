@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Zwerf-map met alleen een .git; hoort niet bij dit project
+ChoreQuest/

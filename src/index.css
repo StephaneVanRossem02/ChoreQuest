@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+/* Theme is driven by a `.dark` class on <html> (set before first paint in index.html),
+   not by prefers-color-scheme, so the in-app toggle always wins. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Hof der Draken palette ────────────────────────────────────────────────
+   Light = warm parchment, dark = the app's signature warm-ember night.
+   Only the raw values live here; Tailwind reads them through @theme inline. */
+:root {
+  --hof-primary: #9A5E53;
+  --hof-primary-light: #C27B6E;
+  --hof-primary-dark: #7A4339;
+  --hof-secondary: #8F7124;
+  --hof-secondary-light: #B8943E;
+  /* Darker than the dark-theme twins: these sit on white cards, where the
+     night palette's golds fall under the 4.5:1 AA threshold for body text. */
+  --hof-accent: #8A6A16;
+  --hof-accent-light: #A8842E;
+  --hof-accent2: #A85446;
+
+  --hof-bg: #FBF4EA;
+  --hof-bg-deep: #F3E8D8;
+  --hof-card: #FFFFFF;
+  --hof-card-deep: #F7EFE3;
+  --hof-card-elevated: #FFFBF5;
+
+  --hof-text: #2A1A12;
+  --hof-text-secondary: #7A6050;
+
+  --hof-success: #4C7A48;
+  --hof-warning: #B0742F;
+  --hof-error: #A63F3F;
+
+  --hof-bronze: #8C4F2B;
+  --hof-silver: #5E5875;
+  --hof-gold: #806515;
+
+  --hof-border: #E3D2BC;
+  --hof-border-deep: #D2BC9F;
+  --hof-overlay: rgb(42 26 18 / 0.55);
+  --hof-ring: rgb(154 94 83 / 0.35);
+}
+
+.dark {
+  --hof-primary: #C27B6E;
+  --hof-primary-light: #D4958A;
+  --hof-primary-dark: #9A5E53;
+  --hof-secondary: #B8943E;
+  --hof-secondary-light: #CCA84E;
+  --hof-accent: #E8C870;
+  --hof-accent-light: #F0D890;
+  --hof-accent2: #D4887A;
+
+  --hof-bg: #0F0906;
+  --hof-bg-deep: #0A0603;
+  --hof-card: #1D1009;
+  --hof-card-deep: #160C06;
+  --hof-card-elevated: #271610;
+
+  --hof-text: #F5E6D3;
+  --hof-text-secondary: #9A7E6A;
+
+  --hof-success: #7DAA7A;
+  --hof-warning: #C9945A;
+  --hof-error: #B85858;
+
+  --hof-bronze: #C4845A;
+  --hof-silver: #A09AB0;
+  --hof-gold: #C9A84C;
+
+  --hof-border: #3D2010;
+  --hof-border-deep: #2A1508;
+  --hof-overlay: rgb(10 6 3 / 0.9);
+  --hof-ring: rgb(194 123 110 / 0.5);
+}
+
+@theme inline {
+  --color-primary: var(--hof-primary);
+  --color-primary-light: var(--hof-primary-light);
+  --color-primary-dark: var(--hof-primary-dark);
+  --color-secondary: var(--hof-secondary);
+  --color-secondary-light: var(--hof-secondary-light);
+  --color-accent: var(--hof-accent);
+  --color-accent-light: var(--hof-accent-light);
+  --color-accent2: var(--hof-accent2);
+
+  --color-bg: var(--hof-bg);
+  --color-bg-deep: var(--hof-bg-deep);
+  --color-card: var(--hof-card);
+  --color-card-deep: var(--hof-card-deep);
+  --color-card-elevated: var(--hof-card-elevated);
+
+  --color-ink: var(--hof-text);
+  --color-muted: var(--hof-text-secondary);
+
+  --color-success: var(--hof-success);
+  --color-warning: var(--hof-warning);
+  --color-error: var(--hof-error);
+
+  --color-bronze: var(--hof-bronze);
+  --color-silver: var(--hof-silver);
+  --color-gold: var(--hof-gold);
+
+  --color-edge: var(--hof-border);
+  --color-edge-deep: var(--hof-border-deep);
+
+  --radius-sm: 0.625rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+
+  --font-sans: "Inter var", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+
+  --shadow-glow: 0 0 16px -2px var(--hof-ring);
+  --shadow-glow-lg: 0 0 32px -4px var(--hof-ring);
+
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.5s linear infinite;
+  --animate-pulse-glow: pulse-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--hof-bg);
+    color: var(--hof-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+  }
+
+  /* Visible, on-brand focus ring for keyboard users (WCAG 2.4.7). */
+  :focus-visible {
+    outline: 2px solid var(--hof-primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: var(--hof-primary);
+    color: white;
+  }
+
+  /* Respect the OS "reduce motion" setting everywhere, including Framer Motion,
+     which reads the same media query. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* The RN app leaned on textShadow for its ember glow; this is the web twin.
+     Glow only reads as glow against the night palette — on the light parchment
+     it just makes text look smudged, so it is scoped to the dark theme. */
+  .dark .text-glow {
+    text-shadow: 0 0 10px color-mix(in srgb, currentColor 55%, transparent);
+  }
+  .dark .text-glow-sm {
+    text-shadow: 0 0 6px color-mix(in srgb, currentColor 45%, transparent);
+  }
+
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+  .safe-top {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+
+  /* Horizontal scrollers (month chips) without a visible scrollbar. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  .backface-hidden {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+}

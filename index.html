@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="nl" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Hof der Draken — ChoreQuest</title>
+    <meta name="description" content="Voltooi hofqueestes, verdien Drakenvuur XP en stijg in rang." />
+    <meta name="theme-color" content="#0F0906" />
+    <meta name="color-scheme" content="dark light" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Hof der Draken — ChoreQuest" />
+    <meta property="og:description" content="Voltooi hofqueestes, verdien Drakenvuur XP en stijg in rang." />
+    <meta property="og:image" content="./icon.png" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Hof der Draken" />
+    <link rel="apple-touch-icon" href="./icon.png" />
+
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <script>
+      // Apply the stored theme before first paint so there is no flash.
+      (function () {
+        try {
+          var stored = localStorage.getItem('chorequest_theme');
+          var dark = stored ? stored === 'dark' : true;
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (_) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

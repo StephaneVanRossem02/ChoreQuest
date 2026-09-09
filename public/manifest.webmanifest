@@ -1,0 +1,15 @@
+{
+  "name": "Hof der Draken — ChoreQuest",
+  "short_name": "Hof der Draken",
+  "description": "Voltooi hofqueestes, verdien Drakenvuur XP en stijg in rang.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F0906",
+  "theme_color": "#C27B6E",
+  "icons": [
+    { "src": "./icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
