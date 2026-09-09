@@ -1,6 +1,9 @@
 node_modules/
 dist/
-.env
+
+# .env staat bewust WEL in de repo: de Supabase-URL en de publishable key
+# horen in de browser en zijn niet geheim. .env.local blijft lokaal, voor als
+# je tijdelijk naar een andere Supabase-instantie wilt wijzen.
 .env.local
 .env.*.local
 *.log

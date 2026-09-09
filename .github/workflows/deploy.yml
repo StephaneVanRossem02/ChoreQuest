@@ -36,8 +36,12 @@ jobs:
         env:
           # Pages serves the site from /<repo>/, so the asset base must match.
           BASE_PATH: /${{ github.event.repository.name }}/
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        # De Supabase-waarden komen uit de gecommitte .env. Bewust GEEN
+        # `VITE_SUPABASE_URL: ${{ secrets.… }}` hier: is zo'n secret niet
+        # ingesteld, dan zet Actions de variabele op een lege string, en een
+        # lege shell-variabele wint van .env. Resultaat is een groene build
+        # met een witte pagina. Wil je later toch per omgeving wisselen, zet
+        # dat blok dan terug en zorg dat de secrets ook echt bestaan.
         run: npm run build
 
       - uses: actions/configure-pages@v5

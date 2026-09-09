@@ -26,16 +26,13 @@ Voltooi hofqueestes, verdien Drakenvuur XP, stijg van Hofdame naar Drakenkoningi
 npm install
 ```
 
-Kopieer daarna `.env.example` naar `.env.local` (de waarden staan er al in, het zijn
-dezelfde publieke keys als in `app.json` van de native app):
-
-```bash
-cp .env.example .env.local
-```
-
 ```bash
 npm run dev
 ```
+
+Meer is er niet: de Supabase-waarden staan in `.env`, en dat bestand zit gewoon in de
+repo. Wil je tijdelijk naar een andere Supabase-instantie wijzen, maak dan een
+`.env.local` aan — die wint van `.env` en blijft buiten git.
 
 De site draait op http://localhost:5173.
 
@@ -55,25 +52,37 @@ De site draait op http://localhost:5173.
 
 | Variabele | Waar |
 |---|---|
-| `VITE_SUPABASE_URL` | `.env.local` lokaal, repository secret in CI |
-| `VITE_SUPABASE_ANON_KEY` | idem |
+| `VITE_SUPABASE_URL` | `.env`, in de repo |
+| `VITE_SUPABASE_ANON_KEY` | `.env`, in de repo |
 
-Beide waarden komen in de browserbundle terecht. Dat is by design: de anon/publishable
-key geeft alleen toegang tot wat je row-level security policies toelaten. Zet er dus
-**nooit** de `service_role` key in.
+**Waarom staat dat gewoon in git?** Omdat het geen geheimen zijn. Beide waarden worden
+bij het bouwen in de JS-bundle gebakken; iedereen die de site opent kan ze uit de
+broncode lezen. De key heet bij Supabase niet voor niets *publishable*. Wat je
+beschermt zijn je row-level security policies, niet de onvindbaarheid van deze key.
+
+Zet er dus **nooit** de `service_role` key naast — die omzeilt RLS volledig.
+
+### Waarom geen GitHub Actions secrets
+
+Dat leek netter, maar levert een valkuil op. Actions zet een niet-ingesteld secret op
+een lege string, en een lege shell-variabele wint in Vite van `.env`. Je krijgt dan een
+groene build die in de browser meteen "Supabase is niet geconfigureerd" gooit: een witte
+pagina zonder dat er iets rood kleurt. Met de waarden in `.env` kan dat niet gebeuren.
+
+Wil je later per omgeving wisselen, zet dan het `env:`-blok in
+[`deploy.yml`](.github/workflows/deploy.yml) terug én zorg dat de secrets echt bestaan.
 
 ---
 
 ## Deployen naar GitHub Pages
 
 1. Push deze map als repository naar GitHub.
-2. **Settings → Secrets and variables → Actions → New repository secret** — voeg toe:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-3. **Settings → Pages → Source: GitHub Actions**.
-4. Push naar `main` (of `master`). De workflow in
+2. **Settings → Pages → Source: GitHub Actions**.
+3. Push naar `main` (of `master`). De workflow in
    [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) type-checkt, bouwt en
    publiceert.
+
+Geen secrets in te stellen — zie hierboven.
 
 De site staat daarna op `https://<gebruiker>.github.io/<repo>/`.
 
