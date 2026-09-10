@@ -1,8 +1,11 @@
 import { motion } from 'framer-motion';
-import { Lock, Unlock } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Coins, Lock, Unlock } from 'lucide-react';
 import { useRewards } from '@/hooks/useRewards';
+import { useAppContext } from '@/contexts/AppContext';
 import { PageHeader } from '@/components/PageHeader';
 import { ProgressBar, ProgressRing } from '@/components/ProgressBar';
+import { LifetimeTrack } from '@/components/LifetimeTrack';
 import { TIER_COLOR } from '@/components/TierBadge';
 import type { Reward } from '@/types';
 import { cn } from '@/lib/utils';
@@ -67,6 +70,7 @@ function RewardCard({
 
 export function RewardsPage() {
   const { rewards, currentPoints, currentTier, nextReward, progress, pointsLeft } = useRewards();
+  const { lifetime, capabilities } = useAppContext();
   const nextColor = nextReward ? (TIER_COLOR[nextReward.tier] ?? 'var(--hof-accent)') : 'var(--hof-gold)';
   const currentReward = rewards.find((r) => r.tier === currentTier);
 
@@ -124,7 +128,9 @@ export function RewardsPage() {
         </div>
       )}
 
-      <h2 className="mb-3 text-xs font-extrabold tracking-[0.2em] text-secondary">// HOFRANGORDE</h2>
+      <h2 className="mb-3 text-xs font-extrabold tracking-[0.2em] text-secondary">
+        // HOFRANGORDE — DEZE MAAND
+      </h2>
 
       <div className="space-y-3">
         {rewards.map((reward, i) => (
@@ -138,8 +144,37 @@ export function RewardsPage() {
         ))}
       </div>
 
+      <h2 className="mb-1 mt-8 text-xs font-extrabold tracking-[0.2em] text-secondary">
+        // WAT BLIJFT
+      </h2>
+      <p className="mb-3 text-xs text-muted">
+        Deze twee tellen door, ook na de 1e van de maand.
+      </p>
+
+      <LifetimeTrack lifetime={lifetime} />
+
+      {/* The bottom bar has no room for the Schatkamer on a phone, so this is
+          its way in there. On desktop it also sits in the sidebar. */}
+      {capabilities.hoard && (
+        <Link
+          to="/hoard"
+          className="mt-4 flex items-center gap-3 rounded-lg border border-accent bg-card p-4 transition-transform hover:scale-[1.01] active:scale-[0.99]"
+        >
+          <Coins className="size-7 shrink-0 text-accent" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block font-extrabold text-ink">Schatkamer</span>
+            <span className="block text-xs text-muted">
+              Munten uitgeven aan vlamkleuren, draken en titels
+            </span>
+          </span>
+          <span aria-hidden="true" className="shrink-0 text-accent">
+            →
+          </span>
+        </Link>
+      )}
+
       <p className="py-6 text-center text-sm text-muted">
-        XP reset elke maand. De draak beloont de dappere! 🐉
+        Je maand-XP reset; je drakenrang en zegels niet. De draak beloont de dappere! 🐉
       </p>
     </>
   );

@@ -1,7 +1,9 @@
 import { supabase } from '@/lib/supabase';
 import { TaskInstance, TaskScheduleWithTemplate, TodayTask, RichTaskInstance } from '@/types';
-import { getDateString, getMonthKey, isPast } from '@/utils/date';
+import { getDateString, getHoursPastSchedule, getMonthKey, hoursBetween, isPast } from '@/utils/date';
 import { updateMonthlySummary } from '@/services/summaries';
+import { bonusForHoursLate } from '@/services/bounties';
+import { probeCapabilities } from '@/lib/capabilities';
 
 function isDueToday(schedule: TaskScheduleWithTemplate, todayStr: string): boolean {
   const today = new Date();
@@ -18,6 +20,11 @@ function isDueToday(schedule: TaskScheduleWithTemplate, todayStr: string): boole
 export async function getTodayTasks(userId: string): Promise<TodayTask[]> {
   const todayStr = getDateString();
   const monthKey = getMonthKey();
+  // Awaited rather than read from the cache: this runs on mount alongside
+  // AppContext's probe, and reading a not-yet-populated cache would silently
+  // drop claimed bounties from the first load. The probe is deduped, so after
+  // the first call this costs nothing.
+  const { bounties: bountiesEnabled } = await probeCapabilities();
 
   const { data: schedules, error: schedulesError } = await supabase
     .from('task_schedules')
@@ -27,43 +34,103 @@ export async function getTodayTasks(userId: string): Promise<TodayTask[]> {
   if (schedulesError) throw schedulesError;
   if (!schedules || schedules.length === 0) return [];
 
-  const dueSchedules = (schedules as TaskScheduleWithTemplate[]).filter(
+  const all = schedules as TaskScheduleWithTemplate[];
+
+  const dueSchedules = all.filter(
     (s) => s.task_templates?.is_active &&
            s.task_templates?.user_id === userId &&
            isDueToday(s, todayStr)
   );
 
+  // Claimed bounties belong in today's list too: once you take one off the
+  // board it is your quest for the day.
+  const bountySchedulesById = new Map(
+    all
+      .filter((s) => s.task_templates?.is_active && s.task_templates?.user_id === null)
+      .map((s) => [s.id, s])
+  );
+
+  let claimed: TaskInstance[] = [];
+  if (bountiesEnabled && bountySchedulesById.size > 0) {
+    const { data } = await supabase
+      .from('task_instances')
+      .select('*')
+      .eq('due_date', todayStr)
+      .eq('claimed_by', userId);
+    claimed = data ?? [];
+  }
+
+  // One query for every instance that already exists, then one bulk upsert for
+  // the rest. This used to be a maybeSingle() plus a possible insert per due
+  // schedule, which is an N+1 that gets slow as the household grows.
+  const existingBySchedule = new Map<string, TaskInstance>();
+
+  if (dueSchedules.length > 0) {
+    const { data: existing, error: existingError } = await supabase
+      .from('task_instances')
+      .select('*')
+      .eq('due_date', todayStr)
+      .in('schedule_id', dueSchedules.map((s) => s.id));
+
+    if (existingError) throw existingError;
+    for (const instance of existing ?? []) existingBySchedule.set(instance.schedule_id, instance);
+
+    const missing = dueSchedules.filter((s) => !existingBySchedule.has(s.id));
+    if (missing.length > 0) {
+      const { data: created, error: createError } = await supabase
+        .from('task_instances')
+        .upsert(
+          missing.map((s) => ({
+            schedule_id: s.id,
+            due_date: todayStr,
+            month_key: monthKey,
+          })),
+          { onConflict: 'schedule_id,due_date', ignoreDuplicates: false }
+        )
+        .select();
+
+      if (createError) throw createError;
+      for (const instance of created ?? []) existingBySchedule.set(instance.schedule_id, instance);
+    }
+  }
+
+  function statusOf(instance: TaskInstance): TodayTask['status'] {
+    if (instance.completed_at) return 'completed';
+    return isPast(instance.due_date) ? 'missed' : 'pending';
+  }
+
   const results: TodayTask[] = [];
 
   for (const schedule of dueSchedules) {
-    const { data: existing } = await supabase
-      .from('task_instances')
-      .select('*')
-      .eq('schedule_id', schedule.id)
-      .eq('due_date', todayStr)
-      .maybeSingle();
+    const instance = existingBySchedule.get(schedule.id);
+    if (!instance) continue;
+    results.push({
+      instance,
+      schedule,
+      template: schedule.task_templates,
+      status: statusOf(instance),
+      isBounty: false,
+      bonus: 0,
+    });
+  }
 
-    let instance: TaskInstance;
-
-    if (existing) {
-      instance = existing;
-    } else {
-      const { data: created, error: createError } = await supabase
-        .from('task_instances')
-        .insert({ schedule_id: schedule.id, due_date: todayStr, month_key: monthKey })
-        .select()
-        .single();
-      if (createError) throw createError;
-      instance = created;
-    }
-
-    const status = instance.completed_at
-      ? 'completed'
-      : isPast(instance.due_date)
-      ? 'missed'
-      : 'pending';
-
-    results.push({ instance, schedule, template: schedule.task_templates, status });
+  for (const instance of claimed) {
+    const schedule = bountySchedulesById.get(instance.schedule_id);
+    if (!schedule) continue;
+    results.push({
+      instance,
+      schedule,
+      template: schedule.task_templates,
+      status: statusOf(instance),
+      isBounty: true,
+      // Frozen at claim time so the reward cannot drift while it sits in the
+      // list: the bonus is what the board advertised when it was taken.
+      bonus: bonusForHoursLate(
+        instance.claimed_at
+          ? hoursBetween(schedule.time_of_day, instance.claimed_at)
+          : getHoursPastSchedule(schedule.time_of_day)
+      ),
+    });
   }
 
   return results;

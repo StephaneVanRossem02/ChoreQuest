@@ -75,3 +75,16 @@ export function getHoursPastSchedule(timeOfDay: string): number {
   const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate(), schedHour, schedMin, 0);
   return (now.getTime() - scheduled.getTime()) / (1000 * 60 * 60);
 }
+
+/**
+ * Hours from a scheduled time-of-day to an absolute moment, measured on the
+ * date of that moment. Used to freeze a bounty's late bonus at the instant it
+ * was claimed, so the reward cannot drift while the quest sits in a list.
+ */
+export function hoursBetween(timeOfDay: string, isoTimestamp: string): number {
+  const at = new Date(isoTimestamp);
+  if (Number.isNaN(at.getTime())) return 0;
+  const [schedHour, schedMin] = timeOfDay.split(':').map(Number);
+  const scheduled = new Date(at.getFullYear(), at.getMonth(), at.getDate(), schedHour, schedMin, 0);
+  return (at.getTime() - scheduled.getTime()) / (1000 * 60 * 60);
+}

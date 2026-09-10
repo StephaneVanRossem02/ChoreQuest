@@ -11,6 +11,10 @@ type Props = {
   task: TodayTask;
   onComplete: (task: TodayTask) => void;
   busy?: boolean;
+  /** Active streak multiplier, so the card shows what will really be awarded. */
+  multiplier?: number;
+  /** Equipped card frame from the Schatkamer. */
+  frameColor?: string;
 };
 
 /** Border colour ramps from calm to alarming the longer a task stays open. */
@@ -30,10 +34,24 @@ function urgencyLabel(hoursPast: number): string | null {
 
 const SWIPE_THRESHOLD = 110;
 
-export function TaskCard({ task, onComplete, busy = false }: Props) {
+export function TaskCard({
+  task,
+  onComplete,
+  busy = false,
+  multiplier = 1,
+  frameColor,
+}: Props) {
   const { template, instance, schedule, status } = task;
   const [showReport, setShowReport] = useState(false);
   const isCompleted = status === 'completed';
+
+  // Mirrors the arithmetic in TodayPage.handleComplete so the number the card
+  // promises is the number the member is awarded.
+  const base = template.points + task.bonus;
+  const boosted =
+    status === 'pending' && (multiplier > 1 || task.bonus > 0)
+      ? Math.max(base, Math.round(base * multiplier))
+      : null;
 
   const hoursPast = status === 'pending' ? getHoursPastSchedule(schedule.time_of_day) : 0;
   const accent =
@@ -69,7 +87,13 @@ export function TaskCard({ task, onComplete, busy = false }: Props) {
           drag={canSwipe ? 'x' : false}
           dragConstraints={{ left: 0, right: SWIPE_THRESHOLD + 40 }}
           dragElastic={0.2}
-          style={{ x, borderColor: accent, boxShadow: `0 0 14px -4px ${accent}` }}
+          style={{
+            x,
+            // The urgency ramp owns the border while a quest is open; a bought
+            // frame only shows once the card is no longer shouting for action.
+            borderColor: status === 'pending' ? accent : (frameColor ?? accent),
+            boxShadow: `0 0 14px -4px ${status === 'pending' ? accent : (frameColor ?? accent)}`,
+          }}
           onDragEnd={(_, info) => {
             if (info.offset.x > SWIPE_THRESHOLD) {
               onComplete(task);
@@ -100,7 +124,23 @@ export function TaskCard({ task, onComplete, busy = false }: Props) {
                 <p className="truncate text-sm text-muted">{template.description}</p>
               )}
               <div className="mt-1 flex flex-wrap items-center gap-3">
-                <span className="text-xs font-bold text-accent">⭐ {template.points} XP</span>
+                {boosted !== null ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-accent">
+                    <span className="text-muted line-through">⭐ {template.points}</span>
+                    <span>{boosted} XP</span>
+                    {task.bonus > 0 && (
+                      <span className="text-secondary">+{task.bonus} bonus</span>
+                    )}
+                    {multiplier > 1 && <span className="text-error">🔥 ×{multiplier}</span>}
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold text-accent">⭐ {template.points} XP</span>
+                )}
+                {task.isBounty && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-secondary">
+                    📜 Van het Prijzenbord
+                  </span>
+                )}
                 {template.photo_required && (
                   <span className="inline-flex items-center gap-1 text-xs font-semibold text-secondary-light">
                     <Camera className="size-3" aria-hidden="true" /> Bewijs vereist

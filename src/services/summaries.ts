@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { MonthlySummary, RewardTier } from '@/types';
 import { getDateString } from '@/utils/date';
+import { probeCapabilities } from '@/lib/capabilities';
 
 async function computeRewardTier(totalPoints: number): Promise<RewardTier> {
   const { data } = await supabase
@@ -20,6 +21,7 @@ async function computeRewardTier(totalPoints: number): Promise<RewardTier> {
 
 export async function updateMonthlySummary(monthKey: string, userId: string): Promise<MonthlySummary> {
   const today = getDateString();
+  const { bounties: bountiesEnabled } = await probeCapabilities();
 
   // Get all schedule IDs for this user's tasks
   type ScheduleOwnerRow = { id: string; task_templates: { user_id: string | null } | null };
@@ -33,7 +35,13 @@ export async function updateMonthlySummary(monthKey: string, userId: string): Pr
     .filter((s) => s.task_templates?.user_id === userId)
     .map((s) => s.id);
 
-  const { data: instances, error } = await supabase
+  type CountedRow = {
+    completed_at: string | null;
+    points_earned: number | null;
+    due_date: string;
+  };
+
+  const { data: owned, error } = await supabase
     .from('task_instances')
     .select('completed_at, points_earned, due_date')
     .eq('month_key', monthKey)
@@ -41,8 +49,24 @@ export async function updateMonthlySummary(monthKey: string, userId: string): Pr
 
   if (error) throw error;
 
-  const completed = (instances ?? []).filter((i) => i.completed_at !== null);
-  const missed = (instances ?? []).filter((i) => !i.completed_at && i.due_date < today);
+  const rows: CountedRow[] = [...(owned ?? [])];
+
+  // A claimed bounty has no template owner, so its XP has to follow the
+  // claimer instead. Without this, finishing a bounty would earn nobody
+  // anything on the monthly summary.
+  if (bountiesEnabled) {
+    const { data: claimed, error: claimedError } = await supabase
+      .from('task_instances')
+      .select('completed_at, points_earned, due_date')
+      .eq('month_key', monthKey)
+      .eq('claimed_by', userId);
+
+    if (claimedError) throw claimedError;
+    rows.push(...(claimed ?? []));
+  }
+
+  const completed = rows.filter((i) => i.completed_at !== null);
+  const missed = rows.filter((i) => !i.completed_at && i.due_date < today);
   const totalPoints = completed.reduce((sum, i) => sum + (i.points_earned ?? 0), 0);
   const rewardTier = await computeRewardTier(totalPoints);
 

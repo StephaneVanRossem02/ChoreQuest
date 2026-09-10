@@ -10,6 +10,10 @@ type Props = {
   color?: string;
   height?: number;
   className?: string;
+  /** Travelling specular highlight, so the fill reads as molten not painted. */
+  molten?: boolean;
+  /** Within touching distance of the next tier — makes the whole bar breathe. */
+  nearTier?: boolean;
 };
 
 export function ProgressBar({
@@ -19,6 +23,8 @@ export function ProgressBar({
   color = 'var(--hof-accent)',
   height = 14,
   className,
+  molten = false,
+  nearTier = false,
 }: Props) {
   const clamped = Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0));
   const percent = Math.round(clamped * 100);
@@ -28,25 +34,46 @@ export function ProgressBar({
       {(label || sublabel) && (
         <div className="mb-1 flex items-baseline justify-between gap-3">
           {label && <span className="text-sm font-semibold text-ink">{label}</span>}
-          {sublabel && <span className="shrink-0 text-xs text-muted">{sublabel}</span>}
+          {sublabel && (
+            <span
+              className={cn(
+                'shrink-0 text-xs',
+                nearTier ? 'font-bold text-accent' : 'text-muted'
+              )}
+            >
+              {sublabel}
+            </span>
+          )}
         </div>
       )}
-      <div
-        role="progressbar"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={label ?? 'Voortgang'}
-        style={{ height }}
-        className="w-full overflow-hidden rounded-full bg-edge"
-      >
-        <motion.div
-          className="h-full rounded-full"
-          style={{ backgroundColor: color, boxShadow: `0 0 12px -2px ${color}` }}
-          initial={{ width: 0 }}
-          animate={{ width: `${percent}%` }}
-          transition={{ type: 'spring', damping: 26, stiffness: 120 }}
-        />
+      <div className="relative">
+        <div
+          role="progressbar"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={label ?? 'Voortgang'}
+          style={{ height }}
+          className="w-full overflow-hidden rounded-full bg-edge"
+        >
+          <motion.div
+            className={cn('h-full rounded-full', molten && 'molten')}
+            style={{ backgroundColor: color, boxShadow: `0 0 12px -2px ${color}` }}
+            initial={{ width: 0 }}
+            animate={{ width: `${percent}%` }}
+            transition={{ type: 'spring', damping: 26, stiffness: 120 }}
+          />
+        </div>
+
+        {/* Near-tier halo. Sits outside the clipping track so the glow can
+            spill, and leans on the pulse-glow keyframes already in the theme. */}
+        {nearTier && (
+          <span
+            aria-hidden="true"
+            className="animate-pulse-glow pointer-events-none absolute -inset-1 rounded-full"
+            style={{ boxShadow: `0 0 16px 1px ${color}` }}
+          />
+        )}
       </div>
     </div>
   );

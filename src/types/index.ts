@@ -1,6 +1,9 @@
 import { Database, RecurrenceType, UserRole } from './database';
+import type { CosmeticsBag, Json } from './database';
 
-export type { Database, RecurrenceType, UserRole };
+export type { Database, RecurrenceType, UserRole, CosmeticsBag, Json };
+export type CosmeticItem = Database['public']['Tables']['cosmetics_catalog']['Row'];
+export type CosmeticKind = CosmeticItem['kind'];
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 
 export type TaskTemplate = Database['public']['Tables']['task_templates']['Row'];
@@ -29,6 +32,21 @@ export type TodayTask = {
   schedule: TaskSchedule;
   template: TaskTemplate;
   status: 'pending' | 'completed' | 'missed';
+  /** An unowned quest this member claimed from the Prijzenbord. */
+  isBounty: boolean;
+  /** Late bonus already earned on a bounty, in XP. 0 for normal quests. */
+  bonus: number;
+};
+
+/** A quest on the Prijzenbord that nobody has claimed yet. */
+export type Bounty = {
+  instance: TaskInstance;
+  schedule: TaskSchedule;
+  template: TaskTemplate;
+  /** Hours past the scheduled time; negative means not due yet. */
+  hoursLate: number;
+  /** Escalating reward for the job nobody wants. */
+  bonus: number;
 };
 
 export type RewardTier = 0 | 1 | 2 | 3;

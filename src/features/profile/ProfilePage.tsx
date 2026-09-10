@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Bell, BellOff, ChevronRight, LogOut, Moon, Pencil, Sun } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useAppContext } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUI } from '@/contexts/UIContext';
 import { supabase } from '@/lib/supabase';
@@ -16,10 +17,14 @@ import { Button } from '@/components/ui/Button';
 import { Input, PasswordInput } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { SpinnerDot } from '@/components/ui/Spinner';
+import { LifetimeTrack } from '@/components/LifetimeTrack';
+import { useStreak } from '@/hooks/useStreak';
 import { AVATARS, getAvatarByUrl, getTwemojiUrl, type AvatarOption } from './avatars';
 import { cn, errorMessage } from '@/lib/utils';
 
 export function ProfilePage() {
+  const { lifetime } = useAppContext();
+  const { streak } = useStreak();
   const navigate = useNavigate();
   const { user, signOut, setAvatarUrl: setGlobalAvatar } = useAuthContext();
   const { theme, toggleTheme } = useTheme();
@@ -193,6 +198,29 @@ export function ProfilePage() {
         <p className="mt-1 text-xl font-extrabold text-ink">{displayName || '(geen naam)'}</p>
         <p className="text-sm text-muted">{user?.email}</p>
       </section>
+
+      {/* What carries over from month to month */}
+      <h2 className="mb-2 text-xs font-extrabold tracking-[0.2em] text-secondary">
+        // JOUW GESCHIEDENIS
+      </h2>
+      <LifetimeTrack lifetime={lifetime} className="mb-4" />
+
+      {streak.longest > 0 && (
+        <div className="mb-6 flex items-center gap-3 rounded-md border border-edge bg-card p-4">
+          <span aria-hidden="true" className="text-2xl">
+            🔥
+          </span>
+          <p className="text-sm text-muted">
+            Langste reeks ooit:{' '}
+            <strong className="font-bold text-ink">
+              {streak.longest} {streak.longest === 1 ? 'dag' : 'dagen'}
+            </strong>
+            {streak.current > 0 && (
+              <span className="text-muted"> — nu {streak.current} op rij</span>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Display name */}
       <h2 className="mb-2 text-xs font-extrabold tracking-[0.2em] text-secondary">

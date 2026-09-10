@@ -15,6 +15,8 @@ import { CalendarPage } from '@/features/calendar/CalendarPage';
 import { MonthDetailPage } from '@/features/calendar/MonthDetailPage';
 import { RewardsPage } from '@/features/rewards/RewardsPage';
 import { RankingPage } from '@/features/ranking/RankingPage';
+import { BountyBoardPage } from '@/features/bounties/BountyBoardPage';
+import { HoardPage } from '@/features/hoard/HoardPage';
 import { TasksPage } from '@/features/tasks/TasksPage';
 import { TaskTemplateFormPage } from '@/features/tasks/TaskTemplateFormPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
@@ -85,6 +87,11 @@ function Shell() {
             <Route path="/calendar/:monthKey" element={<MonthDetailPage />} />
             <Route path="/rewards" element={<RewardsPage />} />
             <Route path="/ranking" element={<RankingPage />} />
+            {/* Both routes stay mounted whether or not their migration has
+                been applied: each page renders its own "run the SQL" state,
+                so a bookmarked link never 404s. */}
+            <Route path="/bounties" element={<BountyBoardPage />} />
+            <Route path="/hoard" element={<HoardPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/tasks/new" element={<TaskTemplateFormPage />} />
             <Route path="/tasks/:templateId" element={<TaskTemplateFormPage />} />

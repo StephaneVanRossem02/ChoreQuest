@@ -1,10 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 type Props = {
   open: boolean;
   taskName: string;
   pointsEarned: number;
+  /** Set when this completion also crossed into a new reward tier. */
+  tierUp?: { name: string; emoji: string } | null;
+  /** Streak multiplier that was applied, if any. */
+  multiplier?: number;
   onDismiss: () => void;
 };
 
@@ -12,6 +16,11 @@ type Props = {
  * Three dragons fly in from off-screen, hover, and cheer while the "queeste
  * voltooid" card flips in. Ported beat for beat from the native Animated
  * version, with the card gaining a 3D flip now that we have real perspective.
+ *
+ * The ceremony is proportional to the win. Every completion used to fire the
+ * identical 2.8s three-dragon sequence, so washing two plates got the same
+ * fanfare as scrubbing the bathroom and the whole thing stopped registering
+ * after a few days. Now the scale of the moment matches what it cost.
  */
 const DRAGONS = [
   { action: '👍', flip: false, from: { x: '-60vw', y: -80 }, to: { x: -140, y: -90 }, delay: 0 },
@@ -20,14 +29,56 @@ const DRAGONS = [
 ] as const;
 
 const FIRE = ['🔥', '✨', '🔥', '💛', '🔥'];
-const DISMISS_MS = 2800;
+const STORM = ['🔥', '✨', '💛', '⭐', '🔥', '✨', '💫', '🔥', '⭐', '✨', '💛', '🔥'];
 
-export function CelebrationOverlay({ open, taskName, pointsEarned, onDismiss }: Props) {
+type Ceremony = {
+  /** How many of the three dragons turn up. */
+  dragons: number;
+  /** Auto-dismiss delay. */
+  ms: number;
+  /** Fire burst from the third dragon. */
+  burst: boolean;
+  /** Screen-wide ember sweep. */
+  storm: boolean;
+  eyebrow: string;
+};
+
+function ceremonyFor(points: number, tierUp: boolean): Ceremony {
+  if (tierUp) {
+    return { dragons: 3, ms: 4200, burst: true, storm: true, eyebrow: 'NIEUWE RANG' };
+  }
+  if (points >= 5) {
+    return { dragons: 3, ms: 3400, burst: true, storm: true, eyebrow: 'GROTE QUEESTE VOLTOOID' };
+  }
+  if (points >= 3) {
+    return { dragons: 3, ms: 2800, burst: true, storm: false, eyebrow: 'QUEESTE VOLTOOID' };
+  }
+  // A small chore gets a nod, not a parade — and gets out of the way fast.
+  return { dragons: 1, ms: 1100, burst: false, storm: false, eyebrow: 'VOLBRACHT' };
+}
+
+export function CelebrationOverlay({
+  open,
+  taskName,
+  pointsEarned,
+  tierUp = null,
+  multiplier = 1,
+  onDismiss,
+}: Props) {
+  const ceremony = useMemo(
+    () => ceremonyFor(pointsEarned, tierUp !== null),
+    [pointsEarned, tierUp]
+  );
+
   useEffect(() => {
     if (!open) return;
-    const timer = window.setTimeout(onDismiss, DISMISS_MS);
+    const timer = window.setTimeout(onDismiss, ceremony.ms);
     return () => window.clearTimeout(timer);
-  }, [open, onDismiss]);
+  }, [open, onDismiss, ceremony.ms]);
+
+  const label = tierUp
+    ? `Nieuwe rang bereikt: ${tierUp.name}. Queeste ${taskName} voltooid, plus ${pointsEarned} XP`
+    : `Queeste voltooid: ${taskName}, plus ${pointsEarned} XP`;
 
   return (
     <AnimatePresence>
@@ -40,10 +91,37 @@ export function CelebrationOverlay({ open, taskName, pointsEarned, onDismiss }: 
           onClick={onDismiss}
           role="alertdialog"
           aria-live="assertive"
-          aria-label={`Queeste voltooid: ${taskName}, plus ${pointsEarned} XP`}
+          aria-label={label}
         >
+          {/* Screen-wide ember sweep, only for a 5-XP quest or a tier-up. */}
+          {ceremony.storm &&
+            STORM.map((particle, i) => {
+              const left = (i / STORM.length) * 100 + (i % 2 === 0 ? 3 : -3);
+              return (
+                <motion.span
+                  key={`storm-${i}`}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute text-2xl"
+                  style={{ left: `${Math.min(94, Math.max(2, left))}%` }}
+                  initial={{ bottom: '-10%', opacity: 0, rotate: 0 }}
+                  animate={{
+                    bottom: '110%',
+                    opacity: [0, 1, 1, 0],
+                    rotate: i % 2 === 0 ? 40 : -40,
+                  }}
+                  transition={{
+                    duration: 2.2 + (i % 4) * 0.35,
+                    delay: 0.1 + i * 0.07,
+                    ease: 'easeOut',
+                  }}
+                >
+                  {particle}
+                </motion.span>
+              );
+            })}
+
           {/* Dragons */}
-          {DRAGONS.map((dragon, i) => (
+          {DRAGONS.slice(0, ceremony.dragons).map((dragon, i) => (
             <motion.div
               key={dragon.action}
               aria-hidden="true"
@@ -84,7 +162,8 @@ export function CelebrationOverlay({ open, taskName, pointsEarned, onDismiss }: 
               </span>
 
               {/* Fire burst from the third dragon */}
-              {i === 2 &&
+              {ceremony.burst &&
+                i === 2 &&
                 FIRE.map((particle, fi) => {
                   const angle = (fi / FIRE.length) * Math.PI * 1.4 - 0.7;
                   const dist = 50 + fi * 20;
@@ -119,9 +198,26 @@ export function CelebrationOverlay({ open, taskName, pointsEarned, onDismiss }: 
               <div aria-hidden="true" className="h-1 w-full bg-gradient-to-r from-primary to-secondary" />
               <div className="flex flex-col items-center gap-3 px-6 pb-8 pt-5 text-center">
                 <p className="text-glow text-xs font-black tracking-[0.35em] text-primary">
-                  QUEESTE VOLTOOID
+                  {ceremony.eyebrow}
                 </p>
+
+                {/* A tier-up mints its badge in the middle of the card. */}
+                {tierUp && (
+                  <motion.div
+                    initial={{ scale: 0, rotate: -25, opacity: 0 }}
+                    animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                    transition={{ delay: 0.45, type: 'spring', damping: 9, stiffness: 200 }}
+                    className="flex flex-col items-center gap-1"
+                  >
+                    <span className="text-glow text-5xl" aria-hidden="true">
+                      {tierUp.emoji}
+                    </span>
+                    <span className="text-glow text-lg font-black text-accent">{tierUp.name}</span>
+                  </motion.div>
+                )}
+
                 <p className="text-lg font-extrabold text-ink">{taskName}</p>
+
                 <motion.div
                   initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
@@ -133,6 +229,17 @@ export function CelebrationOverlay({ open, taskName, pointsEarned, onDismiss }: 
                     +{pointsEarned} ⭐
                   </span>
                 </motion.div>
+
+                {multiplier > 1 && (
+                  <motion.p
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.55 }}
+                    className="text-xs font-bold text-error"
+                  >
+                    🔥 Drakenvuur ×{multiplier} toegepast
+                  </motion.p>
+                )}
               </div>
             </motion.div>
           </div>

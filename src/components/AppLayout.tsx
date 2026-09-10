@@ -1,7 +1,17 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CalendarDays, Home, ListTodo, Shield, Trophy, Medal } from 'lucide-react';
+import {
+  CalendarDays,
+  Coins,
+  Home,
+  ListTodo,
+  Scroll,
+  Shield,
+  Trophy,
+  Medal,
+} from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useAppContext } from '@/contexts/AppContext';
 import { useSwipeNav } from '@/hooks/useSwipeNav';
 import { cn } from '@/lib/utils';
 
@@ -10,15 +20,25 @@ type NavItem = {
   label: string;
   icon: typeof Home;
   adminOnly?: boolean;
+  /** Needs a migration that may not be applied yet. */
+  requires?: 'bounties' | 'hoard';
+  /**
+   * Whether it earns a slot in the mobile bottom bar. A bottom bar stops being
+   * usable past six targets, so the two secondary destinations live in the
+   * desktop sidebar and are reached from in-page cards on a phone.
+   */
+  mobile: boolean;
 };
 
 const NAV: NavItem[] = [
-  { to: '/today', label: 'Today', icon: Home },
-  { to: '/calendar', label: 'Kalender', icon: CalendarDays },
-  { to: '/rewards', label: 'Beloningen', icon: Trophy },
-  { to: '/ranking', label: 'Ranking', icon: Medal },
-  { to: '/tasks', label: 'Taken', icon: ListTodo },
-  { to: '/admin', label: 'Beheer', icon: Shield, adminOnly: true },
+  { to: '/today', label: 'Today', icon: Home, mobile: true },
+  { to: '/bounties', label: 'Prijzenbord', icon: Scroll, requires: 'bounties', mobile: false },
+  { to: '/calendar', label: 'Kalender', icon: CalendarDays, mobile: true },
+  { to: '/rewards', label: 'Beloningen', icon: Trophy, mobile: true },
+  { to: '/ranking', label: 'Ranking', icon: Medal, mobile: true },
+  { to: '/hoard', label: 'Schatkamer', icon: Coins, requires: 'hoard', mobile: false },
+  { to: '/tasks', label: 'Taken', icon: ListTodo, mobile: true },
+  { to: '/admin', label: 'Beheer', icon: Shield, adminOnly: true, mobile: true },
 ];
 
 /** The top-level path a nested route belongs to, e.g. /tasks/new -> /tasks. */
@@ -28,8 +48,15 @@ function rootPath(pathname: string): string {
 
 export function AppLayout() {
   const { isAdmin } = useAuthContext();
+  const { capabilities } = useAppContext();
   const location = useLocation();
-  const items = NAV.filter((item) => !item.adminOnly || isAdmin);
+
+  const visible = NAV.filter(
+    (item) =>
+      (!item.adminOnly || isAdmin) && (!item.requires || capabilities[item.requires])
+  );
+  const mobileItems = visible.filter((item) => item.mobile);
+
   const current = rootPath(location.pathname);
   const swipeRef = useSwipeNav(current);
 
@@ -52,7 +79,7 @@ export function AppLayout() {
             <p className="text-xs font-extrabold tracking-[0.25em] text-primary">🐉 HOF DER</p>
             <p className="text-glow text-xl font-black text-ink">DRAKEN</p>
           </div>
-          {items.map(({ to, label, icon: Icon }) => (
+          {visible.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -86,7 +113,7 @@ export function AppLayout() {
         <div ref={swipeRef} className="min-w-0 flex-1">
           <main
             id="main"
-            className="mx-auto w-full max-w-3xl px-4 pb-28 pt-4 safe-top sm:px-6 lg:max-w-4xl lg:pb-12"
+            className="mx-auto w-full max-w-3xl px-4 pb-32 pt-4 safe-top sm:px-6 lg:max-w-4xl lg:pb-12"
           >
             {/* Keyed on the path so each route remounts and plays its entrance.
                 Deliberately NOT wrapped in <AnimatePresence mode="wait">: under
@@ -105,41 +132,54 @@ export function AppLayout() {
         </div>
       </div>
 
-      {/* Mobile bottom nav */}
-      <nav
-        aria-label="Hoofdnavigatie"
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-edge bg-card-deep/95 backdrop-blur-md safe-bottom lg:hidden"
-      >
-        <ul className="mx-auto flex max-w-3xl">
-          {items.map(({ to, label, icon: Icon }) => (
-            <li key={to} className="flex-1">
-              <NavLink
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    'relative flex flex-col items-center gap-1 px-1 py-2.5 text-[0.65rem] font-bold transition-colors',
-                    isActive ? 'text-primary' : 'text-muted hover:text-ink'
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.span
-                        layoutId="tab-active"
-                        className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-primary"
-                        transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-                      />
-                    )}
-                    <Icon className="size-5" aria-hidden="true" />
-                    <span className="truncate">{label}</span>
-                  </>
-                )}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      {/* Mobile bottom nav — V4: a detached pill floating on glass rather than
+          an opaque bar welded to the screen edge. */}
+      <div className="fixed inset-x-0 bottom-0 z-50 px-3 pb-3 safe-bottom lg:hidden">
+        <nav
+          aria-label="Hoofdnavigatie"
+          className="glass glass-edge mx-auto max-w-md overflow-hidden rounded-xl shadow-glow-lg"
+        >
+          <ul className="flex">
+            {mobileItems.map(({ to, label, icon: Icon }) => (
+              <li key={to} className="flex-1">
+                <NavLink
+                  to={to}
+                  className={({ isActive }) =>
+                    cn(
+                      'relative flex flex-col items-center gap-1 px-1 py-2.5 text-[0.65rem] font-bold transition-colors',
+                      isActive ? 'text-primary' : 'text-muted hover:text-ink'
+                    )
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <>
+                          {/* The ember: a soft glow that slides between tabs. */}
+                          <motion.span
+                            layoutId="tab-ember"
+                            aria-hidden="true"
+                            className="absolute inset-x-2 inset-y-1 rounded-lg bg-primary/15"
+                            transition={{ type: 'spring', damping: 24, stiffness: 300 }}
+                          />
+                          <motion.span
+                            layoutId="tab-active"
+                            aria-hidden="true"
+                            className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-primary shadow-glow"
+                            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+                          />
+                        </>
+                      )}
+                      <Icon className="relative size-5" aria-hidden="true" />
+                      <span className="relative truncate">{label}</span>
+                    </>
+                  )}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
     </div>
   );
 }

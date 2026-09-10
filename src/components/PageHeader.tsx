@@ -19,7 +19,8 @@ export function ProfileButton() {
 }
 
 type Props = {
-  eyebrow: string;
+  /** ReactNode, not string: Today puts the live dragon-mood glyph in here. */
+  eyebrow: React.ReactNode;
   title: string;
   subtitle?: string;
   /** Colour token for the eyebrow and title glow. */
@@ -46,7 +47,7 @@ export function PageHeader({
       <div className="min-w-0">
         <p
           className={cn(
-            'text-xs font-extrabold tracking-[0.25em]',
+            'flex items-center gap-2 text-xs font-extrabold tracking-[0.25em]',
             tone === 'primary' ? 'text-primary' : 'text-secondary'
           )}
         >

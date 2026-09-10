@@ -1,6 +1,17 @@
 export type RecurrenceType = 'once' | 'daily' | 'weekly' | 'monthly';
 export type UserRole = 'user' | 'admin';
 
+export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
+
+/** Shape stored in `profiles.cosmetics`. */
+export type CosmeticsBag = {
+  owned?: string[];
+  flame?: string;
+  title?: string;
+  frame?: string;
+  dragon?: string;
+};
+
 /**
  * Hand-maintained schema types, carried over from the React Native app.
  *
@@ -113,6 +124,10 @@ export type Database = {
           points_earned: number | null;
           month_key: string;
           created_at: string;
+          /** 005_bounties.sql. Undefined at runtime until that migration runs,
+              which is what `capabilities.bounties` gates on. */
+          claimed_by: string | null;
+          claimed_at: string | null;
         };
         Insert: {
           id?: string;
@@ -123,6 +138,8 @@ export type Database = {
           points_earned?: number | null;
           month_key: string;
           created_at?: string;
+          claimed_by?: string | null;
+          claimed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -133,6 +150,8 @@ export type Database = {
           points_earned?: number | null;
           month_key?: string;
           created_at?: string;
+          claimed_by?: string | null;
+          claimed_at?: string | null;
         };
         Relationships: [
           {
@@ -140,6 +159,13 @@ export type Database = {
             columns: ['schedule_id'];
             isOneToOne: false;
             referencedRelation: 'task_schedules';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'task_instances_claimed_by_fkey';
+            columns: ['claimed_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -193,6 +219,10 @@ export type Database = {
           avatar_url: string | null;
           role: UserRole;
           created_at: string;
+          /** 006_hoard.sql. Gated on `capabilities.hoard`. */
+          coins: number;
+          coins_lifetime: number;
+          cosmetics: CosmeticsBag;
         };
         Insert: {
           id: string;
@@ -207,6 +237,9 @@ export type Database = {
           display_name?: string | null;
           avatar_url?: string | null;
           role?: UserRole;
+          /** Equipping is client-writable; `owned` and the balances are not
+              (006 installs a trigger that rejects those). */
+          cosmetics?: CosmeticsBag;
         };
         Relationships: [];
       };
@@ -237,9 +270,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      cosmetics_catalog: {
+        Row: {
+          id: string;
+          kind: 'flame' | 'title' | 'frame' | 'dragon';
+          name: string;
+          price: number;
+          value: string;
+        };
+        Insert: {
+          id: string;
+          kind: 'flame' | 'title' | 'frame' | 'dragon';
+          name: string;
+          price: number;
+          value: string;
+        };
+        Update: {
+          id?: string;
+          kind?: 'flame' | 'title' | 'frame' | 'dragon';
+          name?: string;
+          price?: number;
+          value?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      /** 006_hoard.sql. Deducts the catalogue price server-side and returns
+          the new balance, so the browser never names its own price. */
+      buy_cosmetic: {
+        Args: { p_item: string };
+        Returns: number;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
