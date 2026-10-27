@@ -10,6 +10,8 @@ dist/
 # Secrets van de Edge Function (VAPID private key, CRON_SECRET). Die WEL
 # geheim zijn. Zet ze in Supabase met `supabase secrets set --env-file`.
 supabase/functions/.env
+# Eenmalig samengevoegde versie om in de dashboardeditor te plakken.
+supabase/functions/send-reminders-dashboard.ts
 *.log
 .DS_Store
 .vscode/
