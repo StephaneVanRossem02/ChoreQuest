@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from '@/contexts/AuthContext';
 import { AppProvider } from '@/contexts/AppContext';
+import { HouseFeedProvider } from '@/contexts/HouseFeedContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { UIProvider, useUI } from '@/contexts/UIContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppLayout } from '@/components/AppLayout';
+import { PwaGate } from '@/components/PwaGate';
 import { Spinner } from '@/components/ui/Spinner';
 
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -24,7 +26,12 @@ import { AdminDashboardPage } from '@/features/admin/AdminDashboardPage';
 import { AdminUserDetailPage } from '@/features/admin/AdminUserDetailPage';
 import { AdminRewardsPage } from '@/features/admin/AdminRewardsPage';
 
-import { onReminder, rescheduleAllNotifications } from '@/services/notifications';
+import {
+  notificationPermission,
+  onReminder,
+  rescheduleAllNotifications,
+} from '@/services/notifications';
+import { enablePush, pushSupported } from '@/services/push';
 
 /** Signed-in users only; anyone else lands on the login screen. */
 function RequireAuth() {
@@ -57,7 +64,13 @@ function ReminderRunner() {
 
   useEffect(() => {
     if (!user) return;
-    rescheduleAllNotifications().catch(() => {});
+    // Refresh the push subscription first (browsers rotate them, and the
+    // timezone may have changed), so the local timers know to stand down.
+    const sync =
+      pushSupported() && notificationPermission() === 'granted'
+        ? enablePush().catch((e) => console.warn('Push-abonnement bijwerken mislukt', e))
+        : Promise.resolve();
+    sync.then(() => rescheduleAllNotifications()).catch(() => {});
   }, [user]);
 
   return null;
@@ -77,6 +90,7 @@ function Shell() {
   return (
     <>
       <ReminderRunner />
+      <PwaGate />
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/today" replace /> : <LoginPage />} />
 
@@ -118,12 +132,16 @@ export default function App() {
         <UIProvider>
           <AuthProvider>
             <AppProvider>
-              {/* HashRouter, not BrowserRouter: GitHub Pages serves static files
-                  with no rewrite rule, so a deep link like /tasks/new would 404
-                  on refresh. Hash routes are handled entirely client-side. */}
-              <HashRouter>
-                <Shell />
-              </HashRouter>
+              {/* Inside AppProvider because it needs the signed-in user, and
+                  outside the router so the websocket survives navigation. */}
+              <HouseFeedProvider>
+                {/* HashRouter, not BrowserRouter: GitHub Pages serves static
+                    files with no rewrite rule, so a deep link like /tasks/new
+                    would 404 on refresh. Hash routes are client-side only. */}
+                <HashRouter>
+                  <Shell />
+                </HashRouter>
+              </HouseFeedProvider>
             </AppProvider>
           </AuthProvider>
         </UIProvider>

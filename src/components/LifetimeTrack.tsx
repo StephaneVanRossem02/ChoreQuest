@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
 import { ProgressBar } from '@/components/ProgressBar';
+import { DragonSprite } from '@/components/DragonSprite';
+import { useAppContext } from '@/contexts/AppContext';
 import { SEAL_UNLOCKS, type LifetimeStats } from '@/services/progression';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +20,8 @@ type Props = {
  */
 export function LifetimeTrack({ lifetime, className }: Props) {
   const { xp, rank, next, progress, toNext, seals, monthsPlayed } = lifetime;
+  const { cosmetics, cosmeticValue } = useAppContext();
+  const flame = cosmeticValue(cosmetics.flame);
 
   return (
     <section className={cn('space-y-4', className)}>
@@ -29,9 +33,8 @@ export function LifetimeTrack({ lifetime, className }: Props) {
         className="rounded-lg border border-secondary bg-card p-4"
       >
         <div className="mb-3 flex items-center gap-3">
-          <span aria-hidden="true" className="text-3xl">
-            {rank.emoji}
-          </span>
+          {/* The creature IS the rank — it grows a stage every time you climb. */}
+          <DragonSprite stage={rank.tier} flameColor={flame} size={72} className="shrink-0" />
           <div className="min-w-0 flex-1">
             <p className="text-[0.65rem] font-extrabold tracking-[0.2em] text-secondary">
               DRAKENRANG — RESET NOOIT

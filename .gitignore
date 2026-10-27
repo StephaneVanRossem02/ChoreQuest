@@ -6,6 +6,10 @@ dist/
 # je tijdelijk naar een andere Supabase-instantie wilt wijzen.
 .env.local
 .env.*.local
+
+# Secrets van de Edge Function (VAPID private key, CRON_SECRET). Die WEL
+# geheim zijn. Zet ze in Supabase met `supabase secrets set --env-file`.
+supabase/functions/.env
 *.log
 .DS_Store
 .vscode/

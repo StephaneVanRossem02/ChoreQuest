@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { Spinner, SpinnerDot } from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/Button';
 import type { CosmeticItem, CosmeticKind } from '@/types';
+import { feedback } from '@/services/sound';
 import { errorMessage } from '@/lib/utils';
 
 /** Section headings and the order the shop reads in. */
@@ -106,8 +107,10 @@ export function HoardPage() {
         coinsLifetime: w.coinsLifetime,
         cosmetics: { ...w.cosmetics, owned: [...(w.cosmetics.owned ?? []), item.id] },
       }));
+      feedback('coin');
       toast('🪙 Gekocht', `${item.name} is nu van jou.`, 'success');
     } catch (e) {
+      feedback('error');
       toast('Kopen mislukt', errorMessage(e, 'De schatmeester weigerde.'), 'error');
     } finally {
       setBusy(null);
@@ -120,6 +123,7 @@ export function HoardPage() {
     try {
       const next = await equipCosmetic(user.id, item.kind, item.id, wallet.cosmetics);
       setWallet((w) => ({ ...w, cosmetics: next }));
+      feedback('complete');
       toast('✨ Uitgerust', `${item.name} is actief.`, 'success');
     } catch (e) {
       toast('Fout', errorMessage(e, 'Uitrusten mislukt'), 'error');

@@ -1,62 +1,31 @@
 import { getAllActiveSchedulesWithTemplates } from '@/services/schedules';
+import { hasPushSubscription } from '@/services/push';
 import { supabase } from '@/lib/supabase';
 import type { TaskSchedule, TaskScheduleWithTemplate, TaskTemplate } from '@/types';
 import { getDateString } from '@/utils/date';
+import {
+  LAST_NUDGE_HOUR,
+  MESSAGES,
+  SAD_MESSAGES,
+  SAD_NUDGES,
+  SAD_TITLES,
+  TITLES,
+  randomItem,
+} from '../../supabase/functions/_shared/reminderMessages';
 
 /**
- * Web replacement for expo-notifications.
+ * Local reminders, the fallback for when Web Push is not available.
  *
- * The browser has no equivalent of an OS-scheduled local notification: without
- * a push server there is no way to wake a closed tab. What we can do is arm
- * timers for the rest of today while the app is open, and fire a real
- * Notification (or an in-app toast, if permission was denied) when one is due.
- * Reminders are re-armed on every launch and whenever schedules change, so a
- * user who keeps the app open on a phone or desktop still gets nudged.
+ * Real reminders come from the `send-reminders` Edge Function as push
+ * messages (see services/push.ts), which also reach a closed app. When this
+ * browser has a push subscription, nothing here runs, or every reminder
+ * would arrive twice.
+ *
+ * Without push, the best a page can do is arm timers for the rest of today
+ * while it is open and show a notification (or an in-app toast) when one is
+ * due. Mobile browsers freeze hidden tabs, so this only works while the app is
+ * on screen.
  */
-
-const MESSAGES = [
-  (name: string) => `🐉 De draak wacht niet — tijd voor: ${name}!`,
-  (name: string) => `✨ Het hof eist je aanwezigheid! Queeste: ${name}`,
-  (name: string) => `🌙 De nacht fluistert... vergeet ${name} niet, ridder!`,
-  (name: string) => `⭐ Jouw XP wacht op je! Voltooi: ${name}`,
-  (name: string) => `🌹 Een heldin verwaarloost haar queeste niet: ${name}`,
-  (name: string) => `🔮 De magie vervliegt als je ${name} vergeet!`,
-  (name: string) => `👑 Je troon vergt inspanning: ${name}`,
-  (name: string) => `🌿 Het woud fluistert: ${name} moet gedaan worden`,
-  (name: string) => `🐉 Vlieg hoog, drakenridder! ${name} staat op je lijst`,
-  (name: string) => `💜 Rhysand zou dit niet vergeten — ${name} wacht op jou!`,
-  (name: string) => `🌟 Sterren verlichten je pad: ${name} is jouw queeste!`,
-  (name: string) => `⚔️ Maak je zwaard gereed voor: ${name}!`,
-];
-
-const SAD_MESSAGES = [
-  (name: string) => `😔 ${name} wacht nog steeds... De draak is teleurgesteld.`,
-  (name: string) => `💔 Rhysand kijkt toe met droeve ogen — ${name} is nog niet voltooid.`,
-  (name: string) => `🌧️ Het Hof zucht. ${name} blijft ongedaan, ridder.`,
-  (name: string) => `🕯️ De kaarsen in het Hof doven... ${name} wacht op jou.`,
-  (name: string) => `🌙 De uren verstrijken en ${name} is nog steeds niet klaar. Kom.`,
-  (name: string) => `😢 Zelfs de draak verliest zijn geduld... ${name} moet nu!`,
-];
-
-const TITLES = [
-  '🐉 Queeste van het Hof',
-  '✨ Magische Herinnering',
-  '🌙 Nacht Hof Roept',
-  '👑 Jouw Missie Wacht',
-  '🌹 Hof der Dromen',
-  '🔮 Magische Queeste',
-];
-
-const SAD_TITLES = [
-  '💔 Queeste verwaarloosd',
-  '😔 Het Hof wacht nog steeds',
-  '🌧️ Ridder, waar ben je?',
-  '🕯️ De tijd verstrijkt...',
-];
-
-function randomItem<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
 
 export function notificationsSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window;
@@ -85,14 +54,21 @@ export function onReminder(fn: ReminderListener | null): void {
   listener = fn;
 }
 
-function fire(title: string, body: string, tag: string): void {
+async function fire(title: string, body: string, tag: string): Promise<void> {
   if (notificationsSupported() && Notification.permission === 'granted') {
+    const options = { body, tag, icon: `${import.meta.env.BASE_URL}icon.png` };
+    // Android Chrome throws on `new Notification()`; only a service worker
+    // may show one there. Prefer the worker whenever there is one.
     try {
-      new Notification(title, { body, tag, icon: `${import.meta.env.BASE_URL}icon.png` });
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (reg) {
+        await reg.showNotification(title, options);
+        return;
+      }
+      new Notification(title, options);
       return;
     } catch {
-      // Some browsers throw when constructing notifications outside a service
-      // worker; fall through to the in-app toast.
+      // Fall through to the in-app toast.
     }
   }
   listener?.(title, body);
@@ -105,7 +81,7 @@ function armAt(when: Date, title: string, body: string, tag: string): void {
   // setTimeout overflows past ~24.8 days; anything beyond today is out of scope
   // anyway, since we re-arm on every launch.
   if (delay <= 0 || delay > 24 * 60 * 60 * 1000) return;
-  timers.push(window.setTimeout(() => fire(title, body, tag), delay));
+  timers.push(window.setTimeout(() => void fire(title, body, tag), delay));
 }
 
 function isDueToday(schedule: TaskSchedule, todayStr: string): boolean {
@@ -125,9 +101,9 @@ function scheduleReminder(schedule: TaskScheduleWithTemplate, template: TaskTemp
 
   armAt(at, randomItem(TITLES), randomItem(MESSAGES)(template.name), `quest-${schedule.id}`);
 
-  // Up to four hourly "the dragon is disappointed" nudges, never past 23:00.
-  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0);
-  for (let i = 1; i <= 4; i++) {
+  // Hourly "the dragon is disappointed" nudges, never past LAST_NUDGE_HOUR.
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), LAST_NUDGE_HOUR, 0, 0);
+  for (let i = 1; i <= SAD_NUDGES; i++) {
     const fireAt = new Date(at.getTime() + i * 60 * 60 * 1000);
     if (fireAt > endOfDay) break;
     armAt(
@@ -144,9 +120,23 @@ export function cancelAllNotifications(): void {
   timers.length = 0;
 }
 
+/** Re-arm just after midnight, for an app that stays open overnight. */
+function armMidnight(): void {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 1, 0);
+  timers.push(
+    window.setTimeout(() => {
+      rescheduleAllNotifications().catch(() => {});
+    }, next.getTime() - now.getTime())
+  );
+}
+
 export async function rescheduleAllNotifications(): Promise<void> {
   cancelAllNotifications();
   if (notificationPermission() === 'denied') return;
+  // The server is sending these already.
+  if (await hasPushSubscription().catch(() => false)) return;
+  armMidnight();
 
   const todayStr = getDateString();
   const schedules = await getAllActiveSchedulesWithTemplates();

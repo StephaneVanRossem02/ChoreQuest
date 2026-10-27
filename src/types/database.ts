@@ -270,6 +270,23 @@ export type Database = {
         };
         Relationships: [];
       };
+      /** 008_push.sql. Written only through save_push_subscription. */
+      push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          timezone: string;
+          user_agent: string | null;
+          created_at: string;
+          last_seen_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       cosmetics_catalog: {
         Row: {
           id: string;
@@ -302,6 +319,18 @@ export type Database = {
       buy_cosmetic: {
         Args: { p_item: string };
         Returns: number;
+      };
+      /** 008_push.sql. Stores this browser's push subscription for the
+          caller, taking it over if another account had it. */
+      save_push_subscription: {
+        Args: {
+          p_endpoint: string;
+          p_p256dh: string;
+          p_auth: string;
+          p_timezone: string;
+          p_user_agent?: string | null;
+        };
+        Returns: undefined;
       };
     };
     Enums: Record<string, never>;

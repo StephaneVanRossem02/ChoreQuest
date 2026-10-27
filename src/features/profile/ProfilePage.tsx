@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Bell, BellOff, ChevronRight, LogOut, Moon, Pencil, Sun } from 'lucide-react';
+import { Bell, BellOff, ChevronRight, LogOut, Moon, Pencil, Sun, Volume2, VolumeX } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAppContext } from '@/contexts/AppContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -13,11 +13,19 @@ import {
   requestNotificationPermissions,
   rescheduleAllNotifications,
 } from '@/services/notifications';
+import {
+  enablePush,
+  hasPushSubscription,
+  needsHomeScreenInstall,
+  pushSupported,
+  sendTestPush,
+} from '@/services/push';
 import { Button } from '@/components/ui/Button';
 import { Input, PasswordInput } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { SpinnerDot } from '@/components/ui/Spinner';
 import { LifetimeTrack } from '@/components/LifetimeTrack';
+import { feedback, isSoundEnabled, setSoundEnabled } from '@/services/sound';
 import { useStreak } from '@/hooks/useStreak';
 import { AVATARS, getAvatarByUrl, getTwemojiUrl, type AvatarOption } from './avatars';
 import { cn, errorMessage } from '@/lib/utils';
@@ -43,6 +51,16 @@ export function ProfilePage() {
   const [savingPwd, setSavingPwd] = useState(false);
 
   const [permission, setPermission] = useState(notificationPermission());
+  const [pushOn, setPushOn] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [soundOn, setSoundOn] = useState(isSoundEnabled());
+  const installFirst = needsHomeScreenInstall();
+
+  useEffect(() => {
+    hasPushSubscription()
+      .then(setPushOn)
+      .catch(() => {});
+  }, []);
 
   const loadProfile = useCallback(async () => {
     const profile = await getOwnProfile();
@@ -122,17 +140,55 @@ export function ProfilePage() {
   }
 
   async function handleEnableNotifications() {
+    if (needsHomeScreenInstall()) {
+      toast(
+        'Eerst op je beginscherm',
+        'Op een iPhone werken meldingen alleen vanuit het beginscherm: Deel → Zet op beginscherm, en open het Hof van daaruit.',
+        'error'
+      );
+      return;
+    }
     const granted = await requestNotificationPermissions();
     setPermission(notificationPermission());
     if (granted) {
+      let viaPush = false;
+      try {
+        viaPush = await enablePush();
+      } catch (e) {
+        console.warn('Push-abonnement mislukt', e);
+      }
+      setPushOn(viaPush);
       rescheduleAllNotifications().catch(() => {});
-      toast('Herinneringen aan 🔔', 'De draak fluistert je naam zolang het Hof open staat.', 'success');
+      toast(
+        'Herinneringen aan 🔔',
+        viaPush
+          ? 'De draak vindt je, ook als het Hof dicht is.'
+          : 'De draak fluistert je naam zolang het Hof open staat.',
+        'success'
+      );
     } else {
       toast(
         'Geen toestemming',
         'Meldingen staan uit. Zet ze aan in je browserinstellingen voor deze site.',
         'error'
       );
+    }
+  }
+
+  async function handleTestPush() {
+    setTesting(true);
+    try {
+      const { devices, delivered } = await sendTestPush();
+      if (delivered > 0) {
+        toast('Onderweg 🐉', `Testmelding verstuurd naar ${delivered} van ${devices} toestel(len).`, 'success');
+      } else {
+        toast('Niet aangekomen', 'De push-dienst weigerde de melding. Zet herinneringen opnieuw aan.', 'error');
+        setPushOn(false);
+      }
+    } catch (e) {
+      toast('Testmelding mislukt', errorMessage(e, 'De draak is onbereikbaar'), 'error');
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -293,8 +349,36 @@ export function ProfilePage() {
 
         <button
           type="button"
+          onClick={() => {
+            const next = !soundOn;
+            setSoundEnabled(next);
+            setSoundOn(next);
+            // Play the confirmation *after* enabling, so you hear what you chose.
+            if (next) feedback('complete');
+          }}
+          aria-pressed={soundOn}
+          className="flex w-full items-center justify-between gap-3 rounded-md border border-edge bg-card p-4 transition-colors hover:border-primary"
+        >
+          <span className="flex items-center gap-3 font-bold text-ink">
+            {soundOn ? (
+              <Volume2 className="size-5 text-accent" aria-hidden="true" />
+            ) : (
+              <VolumeX className="size-5 text-muted" aria-hidden="true" />
+            )}
+            Drakengeluiden
+          </span>
+          <span className="text-right text-sm text-muted">
+            {soundOn ? 'Aan — tik om te dempen' : 'Gedempt'}
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={handleEnableNotifications}
-          disabled={permission === 'granted' || permission === 'unsupported'}
+          disabled={
+            (permission === 'granted' && (pushOn || !pushSupported())) ||
+            (permission === 'unsupported' && !installFirst)
+          }
           className="flex w-full items-center justify-between gap-3 rounded-md border border-edge bg-card p-4 transition-colors hover:border-primary disabled:cursor-default disabled:hover:border-edge"
         >
           <span className="flex items-center gap-3 font-bold text-ink">
@@ -306,15 +390,27 @@ export function ProfilePage() {
             Herinneringen
           </span>
           <span className="text-right text-sm text-muted">
-            {permission === 'granted'
-              ? 'Aan'
-              : permission === 'denied'
-                ? 'Geblokkeerd in je browser'
-                : permission === 'unsupported'
-                  ? 'Niet ondersteund'
-                  : 'Inschakelen'}
+            {installFirst
+              ? 'Zet het Hof eerst op je beginscherm'
+              : permission === 'granted'
+                ? pushOn
+                  ? 'Aan, ook als het Hof dicht is'
+                  : pushSupported()
+                    ? 'Alleen als het Hof open is — tik om te herstellen'
+                    : 'Aan zolang het Hof open is'
+                : permission === 'denied'
+                  ? 'Geblokkeerd in je browser'
+                  : permission === 'unsupported'
+                    ? 'Niet ondersteund'
+                    : 'Inschakelen'}
           </span>
         </button>
+
+        {pushOn && (
+          <Button variant="outline" size="sm" block onClick={handleTestPush} disabled={testing}>
+            {testing ? <SpinnerDot /> : '🔔'} Stuur een testmelding
+          </Button>
+        )}
       </div>
 
       {/* Account */}

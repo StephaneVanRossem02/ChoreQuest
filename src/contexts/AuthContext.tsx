@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { disablePush } from '@/services/push';
 import type { UserRole } from '@/types';
 
 type AuthContextValue = {
@@ -83,6 +84,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // While still signed in, or RLS will not let us delete the row: this
+    // device should stop getting this account's reminders.
+    await disablePush().catch(() => {});
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   }, []);

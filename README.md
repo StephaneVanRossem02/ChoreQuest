@@ -54,6 +54,8 @@ De site draait op http://localhost:5173.
 |---|---|
 | `VITE_SUPABASE_URL` | `.env`, in de repo |
 | `VITE_SUPABASE_ANON_KEY` | `.env`, in de repo |
+| `VITE_VAPID_PUBLIC_KEY` | `.env`, in de repo (publieke helft van het VAPID-paar) |
+| `VAPID_PRIVATE_KEY`, `VAPID_PUBLIC_KEY`, `CRON_SECRET` | `supabase/functions/.env`, **niet** in de repo; secrets van de Edge Function |
 
 **Waarom staat dat gewoon in git?** Omdat het geen geheimen zijn. Beide waarden worden
 bij het bouwen in de JS-bundle gebakken; iedereen die de site opent kan ze uit de
@@ -120,22 +122,64 @@ Alleen wat platformgebonden was, is vervangen:
 | `AsyncStorage` | `localStorage` |
 | `Alert.alert` | Toasts + een echte confirm-dialog (`UIContext`) |
 | `PanResponder` tab-swipe | Touch-events (`useSwipeNav`) |
-| `expo-notifications` | Web Notifications API — zie hieronder |
+| `expo-notifications` | Web Push + Edge Function — zie hieronder |
 | `@expo/vector-icons` | Lucide |
 
-### Herinneringen werken anders
+### Herinneringen: Web Push — vereist `008_push.sql` en de Edge Function
 
-Dit is de enige feature die de web-versie niet volledig kan evenaren. De native app
-plande notificaties bij het besturingssysteem, dat ze ook afvuurde als de app dicht was.
-Een browser kan dat niet zonder push-server.
+De native app liet het besturingssysteem de meldingen plannen. Een browser kan
+dat niet: een timer in een pagina stopt zodra de tab dicht is of de gsm op slot
+gaat. Daarom komen herinneringen nu van de server:
 
-Wat er wél gebeurt: zolang het Hof open staat in een tab, worden de herinneringen van
-vandaag gepland (inclusief de "de draak is teleurgesteld"-opvolgers elk uur). Staat de
-tab dicht, dan komt er niets binnen. Toestemming vraag je aan het einde van de
-onboarding of via **Profiel → Herinneringen**.
+```
+pg_cron (elke minuut)
+  → Edge Function send-reminders
+      → welke queestes zijn nu aan de beurt, per hoflid, in diens tijdzone?
+      → noteer in reminder_log (zo komt elke herinnering maar één keer)
+      → Web Push naar elk toestel van dat hoflid
+          → service worker (src/sw.ts) toont de melding, ook als de app dicht is
+```
 
-Wil je echte push-notificaties, dan is daar een service worker plus een push-backend
-voor nodig — dat past niet binnen een statische Pages-deploy.
+- **Wie krijgt wat:** je eigen queestes op het afgesproken uur, plus tot vier
+  droevige opvolgers, één per uur en nooit na 23:00. Een vrije bounty roept één
+  keer naar iedereen; wie hem opneemt, krijgt daarna ook de opvolgers. Voltooid
+  = stil.
+- **Aanzetten:** aan het einde van de onboarding of via **Profiel → Herinneringen**.
+  Daarna verschijnt er een knop **Stuur een testmelding**.
+- **iPhone:** push werkt alleen als het Hof op het beginscherm staat (iOS 16.4+)
+  en je het van daaruit opent. In Safari zelf bestaat het niet; Profiel zegt dat.
+- **Uitloggen** verwijdert het abonnement van dat toestel, zodat de volgende
+  persoon op die tablet niet jouw draak hoort.
+- **Zonder push** (oude browser, of de functie draait nog niet) valt de app
+  terug op de oude timers: meldingen alleen zolang het Hof open staat.
+
+#### Eenmalig uitrollen
+
+1. **Sleutels.** `supabase/functions/.env` bevat het VAPID-sleutelpaar en een
+   `CRON_SECRET` (gegenereerd, staat in `.gitignore`). De publieke VAPID-sleutel
+   staat ook als `VITE_VAPID_PUBLIC_KEY` in `.env`. Wil je nieuwe: verwijder het
+   bestand en genereer een nieuw paar (`npx web-push generate-vapid-keys`), en
+   pas beide plaatsen aan. Bestaande abonnementen worden bij de volgende start
+   vanzelf vernieuwd.
+2. **Functie uitrollen** (eenmalig `npx supabase login`):
+   ```
+   npx supabase secrets set --project-ref <ref> --env-file supabase/functions/.env
+   npx supabase functions deploy send-reminders --project-ref <ref> --no-verify-jwt
+   ```
+   `--no-verify-jwt` omdat de cron geen gebruikerstoken meestuurt; de functie
+   controleert zelf het `x-cron-secret` of, voor de testmelding, het token.
+3. **Vault-secrets** in de SQL-editor (de cron leest ze daar):
+   ```sql
+   select vault.create_secret('https://<ref>.supabase.co', 'project_url');
+   select vault.create_secret('<CRON_SECRET uit supabase/functions/.env>', 'cron_secret');
+   ```
+4. **Migratie** `008_push.sql` draaien. Die maakt de tabellen en plant de cron.
+5. **Site opnieuw bouwen** (push naar `main`), zodat de service worker en de
+   VAPID-sleutel online staan.
+
+Controleren: **Database → Cron Jobs** toont `send-reminders`; in
+**Edge Functions → send-reminders → Logs** zie je elke minuut een aanroep met
+`{"subscriptions":…,"sent":…}`.
 
 ### Foto-upload
 
@@ -273,9 +317,90 @@ je krijgt.
 
 ---
 
+### Geluid en trilling
+
+`src/services/sound.ts`
+
+Alle geluiden zijn **gesynthetiseerd met de Web Audio API**, niet meegeleverd als
+audiobestanden. Reden: geen bytes bij een bundel met een budget, geen extra
+netwerkverzoeken, en geen vraag over waar die bestanden vandaan komen. De
+drakenbrul is dus letterlijk een gefilterde ruisstoot met een toonhoogte die
+naar beneden veegt.
+
+Browsers weigeren audio te starten vóór een gebruikersactie, dus de
+`AudioContext` wordt pas bij het eerste geluid aangemaakt — dat volgt altijd op
+een tik of klik.
+
+Eén schakelaar (**Profiel → Drakengeluiden**) zet zowel geluid als trilling uit;
+de keuze staat in `localStorage`. Trillen werkt op Android Chrome; iOS Safari
+kent `navigator.vibrate` niet en doet daar dus niets, zonder te falen.
+
+Bewuste keuze: gebeurtenissen van *andere* hofleden maken géén geluid. Een broer
+die om 22:00 de vaat doet, hoort niet in iemand anders zijn kamer te piepen.
+
+### Live-updates — vereist `007_realtime.sql`
+
+`src/services/realtime.ts` + `src/contexts/HouseFeedContext.tsx`
+
+Voltooit iemand een queeste of grist iemand een bounty van het bord, dan zie je
+dat gebeuren in plaats van bij je volgende refresh. De ranking herschikt live,
+de bounty verdwijnt van het bord, en de Hofdoel-balk beweegt mee.
+
+Twee dingen die makkelijk misgaan en waarom het zo gebouwd is:
+
+- `REPLICA IDENTITY FULL` staat in de migratie omdat de payload anders alleen de
+  primary key als "oude rij" meestuurt. Zonder dat kun je niet zien of
+  `completed_at` net van NULL naar een tijdstip ging — precies het verschil
+  tussen "voltooid" en "er is iets anders veranderd".
+- Realtime respecteert RLS: je krijgt alleen wijzigingen door van rijen die je
+  mag lezen. Omdat lezen in dit hof bewust breed is, werkt dat hier zoals
+  bedoeld.
+
+Draait `007` niet, dan komt er simpelweg nooit een melding binnen — geen fout,
+geen kapot scherm. Daarom heeft dit géén capability-probe nodig.
+
+### Installeerbaar en offline (PWA)
+
+De service worker is handgeschreven (`src/sw.ts`, `vite-plugin-pwa` in
+`injectManifest`-modus), omdat een gegenereerde worker geen push kan ontvangen.
+De build injecteert er de lijst met bestanden in, en hij precachet de hele app. Daardoor opent het Hof schermvullend vanaf je beginscherm en werkt
+het zonder verbinding.
+
+- **Updates worden aangeboden, niet opgelegd.** De code onder iemand vandaan
+  verwisselen midden in een queeste is precies hoe je een foto-upload verliest.
+  `PwaGate` toont een melding en jij kiest wanneer.
+- **Supabase wordt nooit gecachet.** Een verlopen sessie of oude queeste-data uit
+  de cache serveren is erger dan een eerlijke foutmelding, en auth-tokens horen
+  sowieso niet in een cache.
+- De service worker staat **uit in dev** — een worker die een Vite-dev-server
+  cachet kost je een middag aan spookmodules.
+
+Let op bij lokaal testen: `vite preview` leest `BASE_PATH` niet, dus bouw je met
+`BASE_PATH=/ChoreQuest/` dan draait de preview-server alsnog op `/`. Dat geeft
+404's die op een bug lijken maar het niet zijn.
+
+Dezelfde worker ontvangt de push-herinneringen; zie *Herinneringen: Web Push*
+hierboven.
+
+### De draak die meegroeit
+
+`src/components/DragonSprite.tsx`
+
+Vijf stadia, gekoppeld aan je Drakenrang: ei, jonge draak, vuurdraak, hofdraak,
+drakenheer. De vlamkleur uit de Schatkamer kleurt zijn ogen, hoorns en adem.
+
+Getekend als **frontaal wapenschild-embleem**, niet als zijaanzicht van een heel
+beest. Dat is een correctie op twee mislukte pogingen: een driekwart-lichaam uit
+ellipsen leest als een klomp met een snavel. Frontaal en symmetrisch kan niet
+scheef staan, en past bovendien bij een hof.
+
+De schedel wordt **één keer als hele vorm** getekend en alleen de decoratie
+wordt gespiegeld. Spiegelen van de schedel tekende zijn sluitrand dubbel en gaf
+een zichtbare naad dwars over de neus.
+
 ## Optionele migraties en de capability-probe
 
-`005` en `006` draai je zelf in de Supabase SQL editor. De app hoeft daar niet
+`005`, `006` en `007` draai je zelf in de Supabase SQL editor. De app hoeft daar niet
 op te wachten: `src/lib/capabilities.ts` test bij het opstarten of
 `task_instances.claimed_by` en `profiles.coins` bestaan, en verbergt wat er nog
 niet is. Draai je de migratie, dan verschijnt de feature bij de volgende reload
@@ -328,13 +453,14 @@ zit erbij en is te wisselen via **Profiel → Nachtelijk/Daglicht Hof**; de keuz
 ## Bundlegrootte
 
 ```
-index.css     9,1 kB gzip
-react        12,4 kB gzip
-motion       40,4 kB gzip
-supabase     58,9 kB gzip
-index       108,2 kB gzip
-─────────────────────────
-totaal      ±230 kB gzip
+index.css      9,2 kB gzip
+workbox        2,4 kB gzip
+react         12,4 kB gzip
+motion        40,4 kB gzip
+supabase      58,9 kB gzip
+index        114,1 kB gzip
+──────────────────────────
+totaal       ±238 kB gzip
 ```
 
 Ruim onder de 300 kB die de opdracht als grens stelde. De ember-velden achter

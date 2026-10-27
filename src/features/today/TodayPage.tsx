@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { RefreshCw, Scroll } from 'lucide-react';
@@ -9,6 +9,7 @@ import { useHouseGoal } from '@/hooks/useHouseGoal';
 import { useAppContext } from '@/contexts/AppContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUI } from '@/contexts/UIContext';
+import { useHouseFeed } from '@/contexts/HouseFeedContext';
 import { TaskCard } from './TaskCard';
 import { CelebrationOverlay } from './CelebrationOverlay';
 import { PageHeader } from '@/components/PageHeader';
@@ -24,6 +25,7 @@ import { completeTaskInstance } from '@/services/instances';
 import { NO_PHOTO, takeAndUploadPhoto } from '@/services/storage';
 import { rescheduleAllNotifications } from '@/services/notifications';
 import { getOpenBounties } from '@/services/bounties';
+import { feedback } from '@/services/sound';
 import { getHoursPastSchedule } from '@/utils/date';
 import { errorMessage } from '@/lib/utils';
 
@@ -44,11 +46,14 @@ export function TodayPage() {
   const { rewards, capabilities, cosmetics, cosmeticValue, refreshSummary } = useAppContext();
   const { streak, refresh: refreshStreak } = useStreak();
   const { goal, threat, refresh: refreshGoal } = useHouseGoal();
+  const { revision } = useHouseFeed();
   const { toast } = useUI();
 
   const [celebration, setCelebration] = useState<Celebration | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
   const [openBounties, setOpenBounties] = useState(0);
+  // The beast should growl when it wakes, not on every re-render afterwards.
+  const beastAnnounced = useRef(false);
 
   // Just the count, for the entry card. The board itself does the real work.
   const countBounties = useCallback(async () => {
@@ -62,7 +67,12 @@ export function TodayPage() {
 
   useEffect(() => {
     countBounties();
-  }, [countBounties]);
+  }, [countBounties, revision]);
+
+  // Someone else's XP moves the shared bar, so it must not wait for a reload.
+  useEffect(() => {
+    if (revision > 0) refreshGoal();
+  }, [revision, refreshGoal]);
 
   const today = new Date().toLocaleDateString('nl-BE', {
     weekday: 'long',
@@ -79,6 +89,14 @@ export function TodayPage() {
   );
 
   const mood = moodFor({ pendingCount, completedCount, overdueCount });
+
+  useEffect(() => {
+    if (threat.awake && !beastAnnounced.current) {
+      beastAnnounced.current = true;
+      feedback('growl');
+    }
+  }, [threat.awake]);
+
   const nearTier = nextReward !== null && pointsLeft > 0 && pointsLeft <= NEAR_TIER_XP;
 
   async function handleComplete(task: TodayTask) {
@@ -130,6 +148,9 @@ export function TodayPage() {
       ]);
       rescheduleAllNotifications().catch(() => {});
 
+      // The ceremony has a sound to match its size.
+      feedback(tierUp ? 'fanfare' : awarded >= 5 ? 'roar' : 'complete');
+
       setCelebration({
         taskName: task.template.name,
         points: awarded,
@@ -137,6 +158,7 @@ export function TodayPage() {
         multiplier: streak.multiplier,
       });
     } catch (e) {
+      feedback('error');
       toast('Fout', errorMessage(e, 'Queeste voltooien mislukt'), 'error');
     } finally {
       setCompleting(null);

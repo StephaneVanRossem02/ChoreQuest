@@ -6,12 +6,14 @@ import { BOUNTY_TAKEN, claimBounty, getOpenBounties } from '@/services/bounties'
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAppContext } from '@/contexts/AppContext';
 import { useUI } from '@/contexts/UIContext';
+import { useHouseFeed } from '@/contexts/HouseFeedContext';
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { Spinner, SpinnerDot } from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/Button';
 import type { Bounty } from '@/types';
 import { formatTime } from '@/utils/date';
+import { feedback } from '@/services/sound';
 import { errorMessage } from '@/lib/utils';
 
 /**
@@ -26,6 +28,7 @@ import { errorMessage } from '@/lib/utils';
 export function BountyBoardPage() {
   const { user } = useAuthContext();
   const { capabilities } = useAppContext();
+  const { revision } = useHouseFeed();
   const { toast } = useUI();
   const navigate = useNavigate();
 
@@ -48,15 +51,17 @@ export function BountyBoardPage() {
     }
   }, [capabilities.bounties, toast]);
 
+  // A bounty someone else grabs disappears from the board while you look at it.
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, revision]);
 
   async function handleClaim(bounty: Bounty) {
     if (!user || claiming) return;
     setClaiming(bounty.instance.id);
     try {
       await claimBounty(bounty.instance.id, user.id);
+      feedback('claim');
       toast(
         '🗡️ Queeste opgenomen',
         `${bounty.template.name} staat nu bij jouw missies van vandaag.`,
@@ -65,6 +70,7 @@ export function BountyBoardPage() {
       navigate('/today');
     } catch (e) {
       if (errorMessage(e) === BOUNTY_TAKEN) {
+        feedback('error');
         toast('Te laat', 'Een ander hoflid was je voor.', 'error');
         load();
       } else {

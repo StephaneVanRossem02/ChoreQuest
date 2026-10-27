@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAppContext } from '@/contexts/AppContext';
 import { useUI } from '@/contexts/UIContext';
+import { useHouseFeed } from '@/contexts/HouseFeedContext';
 import { errorMessage } from '@/lib/utils';
 
 type RankEntry = {
@@ -38,6 +39,7 @@ const PODIUM_ORDER = [1, 0, 2] as const;
 export function RankingPage() {
   const { user } = useAuthContext();
   const { capabilities, cosmeticValue } = useAppContext();
+  const { revision } = useHouseFeed();
   const { toast } = useUI();
   const [entries, setEntries] = useState<RankEntry[]>([]);
   const [champion, setChampion] = useState<WeeklyChampion | null>(null);
@@ -93,9 +95,11 @@ export function RankingPage() {
     }
   }, [toast]);
 
+  // `revision` bumps whenever anyone in the house completes something, so the
+  // standings reshuffle live rather than on the next visit.
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, revision]);
 
   if (loading && entries.length === 0) return <Spinner />;
 

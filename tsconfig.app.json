@@ -24,5 +24,8 @@
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] }
   },
-  "include": ["src"]
+  "include": ["src"],
+  // The service worker runs in a WebWorker scope, whose globals clash with
+  // the DOM lib; tsconfig.sw.json checks it on its own.
+  "exclude": ["src/sw.ts"]
 }
